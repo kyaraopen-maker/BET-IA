@@ -111,55 +111,65 @@ function showTab(tabId, element) {
     if(tabId === 'stats-section') fetchVraisMatchsReels();
 }
 
-// --- RÉCUPÉRATION DES MATCHS (VERSION ROBUSTE) ---
+// --- RÉCUPÉRATION DES MATCHS (ADAPTÉE) ---
 async function fetchVraisMatchsReels() {
     const container = document.getElementById('all-matches-list');
     if(!container) return;
     
-    container.innerHTML = '<div class="loading-text">Chargement des matchs... (Patientez 10s)</div>';
+    container.innerHTML = '<div class="loading-text">Chargement des matchs... (Le serveur Render se réveille)</div>';
 
-    const charger = async () => {
-        try {
-            const response = await fetch(`${SERVER_URL}/api/matches`);
-            const data = await response.json();
-            
-            if (!data.matches || data.matches.length === 0) {
-                container.innerHTML = `<div class="loading-text">Aucun match disponible pour les 7 prochains jours.</div>`;
-                return;
-            }
+    try {
+        // Ajout d'un timeout plus long pour Render (45s)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-            container.innerHTML = `<div class="date-divider">Matchs de la semaine</div>`; 
+        const response = await fetch(`${SERVER_URL}/api/matches`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        const data = await response.json();
+        
+        // On vide pour afficher les résultats
+        container.innerHTML = '';
 
-            data.matches.forEach(match => {
-                const dateObj = new Date(match.utcDate);
-                const dateMatch = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-                const heureMatch = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                
-                const home = (match.homeTeam.shortName || match.homeTeam.name).replace(/'/g, " ");
-                const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
-
-                container.innerHTML += `
-                    <div class="card mini-match-card">
-                        <div class="mini-info-box">
-                            <span class="match-date-badge">${dateMatch}</span>
-                            <div class="teams-display">
-                                <span class="team-name">${home}</span>
-                                <span class="vs-text">VS</span>
-                                <span class="team-name">${away}</span>
-                            </div>
-                            <span class="league-tag">${heureMatch}</span>
-                        </div>
-                        <button class="action-btn" onclick="preRemplir('${home}', '${away}')">Analyser</button>
-                    </div>`;
-            });
-        } catch (error) {
-            console.error("Erreur HIRAM:", error);
-            container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Le serveur se réveille toujours... <br> <button onclick="fetchVraisMatchsReels()" style="background:#00d4ff; border:none; padding:10px; margin-top:10px; border-radius:5px; cursor:pointer;">Réessayer</button></div>`;
+        if (!data.matches || data.matches.length === 0) {
+            container.innerHTML = `<div class="loading-text">Aucun match disponible pour les 7 prochains jours.</div>`;
+            return;
         }
-    };
 
-    // On lance le chargement
-    charger();
+        container.innerHTML = `<div class="date-divider">Matchs de la semaine</div>`; 
+
+        data.matches.forEach(match => {
+            const dateObj = new Date(match.utcDate);
+            const dateMatch = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+            const heureMatch = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            
+            const home = (match.homeTeam.shortName || match.homeTeam.name).replace(/'/g, " ");
+            const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
+
+            container.innerHTML += `
+                <div class="card mini-match-card">
+                    <div class="mini-info-box">
+                        <span class="match-date-badge">${dateMatch}</span>
+                        <div class="teams-display">
+                            <span class="team-name">${home}</span>
+                            <span class="vs-text">VS</span>
+                            <span class="team-name">${away}</span>
+                        </div>
+                        <span class="league-tag">${heureMatch}</span>
+                    </div>
+                    <button class="action-btn" onclick="preRemplir('${home}', '${away}')">Analyser</button>
+                </div>`;
+        });
+    } catch (error) {
+        console.error("Erreur HIRAM:", error);
+        container.innerHTML = `
+            <div class="loading-text" style="color:#ff4d4d">
+                Connexion lente... Le serveur finit de démarrer. <br>
+                <button onclick="fetchVraisMatchsReels()" style="background:#00d4ff; border:none; padding:10px; margin-top:10px; border-radius:5px; cursor:pointer; color:#000; font-weight:bold;">
+                    Actualiser le calendrier
+                </button>
+            </div>`;
+    }
 }
 
 async function lancerAnalyseIA() {

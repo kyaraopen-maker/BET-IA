@@ -38,7 +38,7 @@ app.get('/api/ping', (req, res) => {
     res.status(200).send("Réveillé");
 });
 
-// --- ROUTE : MATCHS DE LA SEMAINE (CORRIGÉE) ---
+// --- ROUTE : MATCHS DE LA SEMAINE ---
 app.get('/api/matches', async (req, res) => {
     try {
         const today = new Date();
@@ -48,15 +48,19 @@ app.get('/api/matches', async (req, res) => {
         const dateFrom = today.toISOString().split('T')[0];
         const dateTo = nextWeek.toISOString().split('T')[0];
 
-        // Modification : Utilisation des query params corrects pour axios
+        console.log(`📅 HIRAM cherche les matchs du ${dateFrom} au ${dateTo}`);
+
+        // Ajout de WC (Coupe du Monde) et EC (Euro) pour éviter les listes vides hors saison
         const response = await axios.get(`https://api.football-data.org/v4/matches`, {
             params: {
                 dateFrom: dateFrom,
                 dateTo: dateTo,
-                competitions: 'PL,FL1,CL,BL1,SA,PD,DED,PPL'
+                competitions: 'PL,FL1,CL,BL1,SA,PD,DED,PPL,WC,EC'
             },
             headers: { 'X-Auth-Token': API_KEY_FOOT }
         });
+
+        console.log(`✅ ${response.data.matches.length} matchs trouvés`);
         res.json(response.data);
     } catch (error) {
         console.error("❌ Erreur API Football:", error.message);
@@ -99,15 +103,17 @@ app.post('/api/analyse-expert', async (req, res) => {
         } catch (e) {}
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = `Analyse ce match : ${homeName} vs ${awayName}. Historique : ${contexteSportif}. Réponds EXCLUSIVEMENT en JSON sans texte autour avec : score, confidence, win_probability, draw_probability, home_form, away_form, avg_goals, key_players, ai_analysis.`;
+        const prompt = `Analyse ce match de foot : ${homeName} vs ${awayName}. Contexte récent : ${contexteSportif}. 
+        Réponds UNIQUEMENT en JSON pur (sans markdown) avec ces clés : score, confidence, win_probability, draw_probability, home_form, away_form, avg_goals, key_players, ai_analysis.`;
 
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
         
-        // Modification : Extraction robuste pour éviter les erreurs de parsing si Gemini ajoute du texte
+        // Extraction du JSON pour éviter les erreurs si Gemini ajoute du texte
         const jsonMatch = responseText.match(/\{.*\}/s);
-        const parsedData = JSON.parse(jsonMatch[0]);
+        if (!jsonMatch) throw new Error("Réponse IA mal formattée");
         
+        const parsedData = JSON.parse(jsonMatch[0]);
         res.json({ ...parsedData, status: "SUCCESS" });
     } catch (error) {
         console.error("❌ Erreur Analyse:", error.message);
