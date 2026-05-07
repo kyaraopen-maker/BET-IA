@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const phrase = "BET IA ";
     let index = 0;
 
-    // On réveille le serveur Render dès l'ouverture du site
+    // Réveil immédiat du serveur Render
     fetch(`${SERVER_URL}/api/ping`).catch(e => console.log("Réveil serveur..."));
 
     function typeWriter() {
@@ -111,25 +111,30 @@ function showTab(tabId, element) {
     if(tabId === 'stats-section') fetchVraisMatchsReels();
 }
 
-// --- RÉCUPÉRATION DES MATCHS (ADAPTÉE) ---
+// --- RÉCUPÉRATION DES MATCHS (VERSION ROBUSTE 60S) ---
 async function fetchVraisMatchsReels() {
     const container = document.getElementById('all-matches-list');
     if(!container) return;
     
-    container.innerHTML = '<div class="loading-text">Chargement des matchs... (Le serveur Render se réveille)</div>';
+    container.innerHTML = `
+        <div class="loading-text">
+            <div class="spinner"></div>
+            Synchronisation avec HIRAM...<br>
+            <small>(Le serveur Render se réveille, attendez 30-60s)</small>
+        </div>`;
 
     try {
-        // Ajout d'un timeout plus long pour Render (45s)
+        // Timeout de 60 secondes pour laisser le temps à Render de démarrer
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
 
         const response = await fetch(`${SERVER_URL}/api/matches`, { signal: controller.signal });
         clearTimeout(timeoutId);
         
-        const data = await response.json();
+        if (!response.ok) throw new Error("Réponse serveur incorrecte");
         
-        // On vide pour afficher les résultats
-        container.innerHTML = '';
+        const data = await response.json();
+        container.innerHTML = ''; // Nettoyage du loader
 
         if (!data.matches || data.matches.length === 0) {
             container.innerHTML = `<div class="loading-text">Aucun match disponible pour les 7 prochains jours.</div>`;
@@ -147,7 +152,7 @@ async function fetchVraisMatchsReels() {
             const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
 
             container.innerHTML += `
-                <div class="card mini-match-card">
+                <div class="card mini-match-card animated-fade-in">
                     <div class="mini-info-box">
                         <span class="match-date-badge">${dateMatch}</span>
                         <div class="teams-display">
@@ -164,9 +169,10 @@ async function fetchVraisMatchsReels() {
         console.error("Erreur HIRAM:", error);
         container.innerHTML = `
             <div class="loading-text" style="color:#ff4d4d">
-                Connexion lente... Le serveur finit de démarrer. <br>
-                <button onclick="fetchVraisMatchsReels()" style="background:#00d4ff; border:none; padding:10px; margin-top:10px; border-radius:5px; cursor:pointer; color:#000; font-weight:bold;">
-                    Actualiser le calendrier
+                <i class="fas fa-exclamation-triangle"></i> Connexion lente.<br>
+                Le serveur finit de démarrer. Réessayez dans 10 secondes.<br>
+                <button onclick="fetchVraisMatchsReels()" class="action-btn" style="margin-top:15px; background:#00d4ff; color:#000; font-weight:bold;">
+                    ACTUALISER LE CALENDRIER
                 </button>
             </div>`;
     }
