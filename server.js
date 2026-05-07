@@ -14,7 +14,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- CONFIGURATION HIRAM ARCHITECH WEB ---
-// Note : Sur Render, utilise process.env.API_KEY_FOOT etc. pour plus de sécurité
 const API_KEY_FOOT = process.env.API_KEY_FOOT || '1280eb84a2b04228b4b3ba402532d615';
 const GEMINI_KEY = process.env.GEMINI_KEY || "AIzaSyBJaMLUh4BcfUns_Tr3N9oGleB49wv1Apg"; 
 const MON_GMAIL = "kyaraopenL@gmail.com"; 
@@ -41,6 +40,19 @@ app.get('/', (req, res) => {
 // Route "Pulsion" pour empêcher le mode veille
 app.get('/api/ping', (req, res) => {
     res.status(200).send("Réveillé");
+});
+
+// --- NOUVELLE ROUTE : RÉCUPÉRATION DES MATCHS (POUR LE CALENDRIER) ---
+app.get('/api/matches', async (req, res) => {
+    try {
+        const response = await axios.get('https://api.football-data.org/v4/matches?competitions=PL,FL1,CL,BL1,SA,PD,DED,PPL', {
+            headers: { 'X-Auth-Token': API_KEY_FOOT }
+        });
+        res.json(response.data);
+    } catch (error) {
+        console.error("❌ Erreur API Football:", error.message);
+        res.status(500).json({ error: "Impossible de charger les matchs" });
+    }
 });
 
 // Route : Notification de paiement
@@ -131,7 +143,6 @@ app.post('/api/analyse-expert', async (req, res) => {
 });
 
 // --- LANCEMENT DU SERVEUR ---
-// Render utilise un port dynamique, process.env.PORT est donc obligatoire
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`----------------------------------------`);

@@ -1,6 +1,5 @@
 // --- CONFIGURATION HIRAM ARCHITECH WEB ---
-const SERVER_URL = 'https://bet-ia-2.onrender.com'; // Ton URL de base Render
-
+const SERVER_URL = 'https://bet-ia-2.onrender.com';
 let sessionValide = false; 
 
 // --- SYSTÈME DE VÉRIFICATION D'ACCÈS ---
