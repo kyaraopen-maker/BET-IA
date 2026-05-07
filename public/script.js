@@ -27,9 +27,10 @@ function checkAdminCode() {
     else alert("Code incorrect.");
 }
 
-// --- FILTRAGE ---
+// --- FILTRAGE (CORRIGÉ POUR L'ID DU HTML) ---
 function filtrerMatchs() {
-    const searchInput = document.getElementById('search-input');
+    // Ton HTML utilise id="search-match", donc on adapte ici
+    const searchInput = document.getElementById('search-match');
     if (!searchInput || allMatchesData.length === 0) return;
     
     const searchTerm = searchInput.value.toLowerCase();
@@ -75,21 +76,20 @@ async function fetchVraisMatchsReels() {
             container.innerHTML = `<div class="loading-text">Aucun match trouvé.</div>`;
         }
     } catch (error) {
-        container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">⚠️ Erreur de connexion au serveur HIRAM.</div>`;
+        container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">⚠️ Serveur en réveil... Réessaie dans 10s.</div>`;
     }
 }
 
 function displayMatches(matches) {
     const container = document.getElementById('all-matches-list');
     if (!container) return;
-    container.innerHTML = `<div class="date-divider">Prochains Matchs Disponibles</div>`; 
+    container.innerHTML = `<div class="date-divider">Vrais prochains matchs</div>`; 
 
     matches.forEach(match => {
         const matchDate = new Date(match.utcDate);
         const heure = matchDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
         const jour = matchDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
 
-        // Nettoyage des noms pour éviter les bugs d'apostrophes dans le onclick
         const homeClean = match.homeTeam.name.replace(/'/g, "\\'");
         const awayClean = match.awayTeam.name.replace(/'/g, "\\'");
         
@@ -102,18 +102,18 @@ function displayMatches(matches) {
                         <span class="vs-text">VS</span>
                         <span class="team-name">${match.awayTeam.name}</span>
                     </div>
-                    <small style="color:#00d4ff;">${match.competition.name}</small>
+                    <small style="color:#00d4ff; font-size:10px;">${match.competition.name}</small>
                 </div>
                 <button class="action-btn" onclick="preRemplir('${homeClean}', '${awayClean}')">Analyser</button>
             </div>`;
     });
 }
 
-// --- ANALYSE IA (CORRIGÉE POUR PARLER AU SERVEUR) ---
+// --- ANALYSE IA ---
 async function lancerAnalyseIA() {
     const dom = document.getElementById('home-team').value;
     const ext = document.getElementById('away-team').value;
-    if (!dom || !ext) { alert("Choisis un match !"); return; }
+    if (!dom || !ext) { alert("Choisis un match d'abord !"); return; }
     
     const resultContainer = document.getElementById('analysis-output'); 
     resultContainer.innerHTML = `<div class="loading-box"><div class="spinner"></div><p>Intelligence HIRAM en cours...</p></div>`;
@@ -122,7 +122,7 @@ async function lancerAnalyseIA() {
         const response = await fetch(`${SERVER_URL}/api/analyse-expert`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ homeName: dom, awayName: ext }) // On envoie bien homeName et awayName
+            body: JSON.stringify({ homeName: dom, awayName: ext })
         });
         
         const dataIA = await response.json();
@@ -133,8 +133,7 @@ async function lancerAnalyseIA() {
             throw new Error(dataIA.error || "Erreur inconnue"); 
         }
     } catch (e) {
-        console.error(e);
-        resultContainer.innerHTML = `<div class="loading-text" style="color:#ff4d4d">❌ Erreur d'analyse IA. Réessaie.</div>`;
+        resultContainer.innerHTML = `<div class="loading-text" style="color:#ff4d4d">❌ Erreur d'analyse. Réessaie.</div>`;
     }
 }
 
@@ -142,11 +141,11 @@ function afficherResultatFinal(dom, ext, container, dataIA) {
     container.innerHTML = `
         <div class="card analysis-card animated-bounce-in" style="margin-top:20px; border: 1px solid #00d4ff; background: rgba(0,0,0,0.95); padding:20px; border-radius:15px;">
             <h2 style="font-size:42px; color:#fff; text-align:center;">${dataIA.score}</h2>
-            <div style="display:flex; justify-content:space-between; color:#00d4ff; font-weight:bold; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; color:#00d4ff; font-weight:bold;">
                  <span>Confiance : ${dataIA.confidence}</span>
-                 <span>Victoire : ${dataIA.win_probability}</span>
+                 <span>P(V) : ${dataIA.win_probability}</span>
             </div>
-            <p style="color:#fff; font-size:14px; line-height:1.4; border-top:1px solid #333; padding-top:10px;">
+            <p style="color:#fff; font-size:13px; margin-top:15px; border-top:1px solid #333; padding-top:10px; line-height:1.4;">
                 ${dataIA.ai_analysis}
             </p>
         </div>`;
@@ -161,16 +160,37 @@ function preRemplir(dom, ext) {
 // --- INITIALISATION ---
 document.addEventListener('DOMContentLoaded', () => {
     fetch(`${SERVER_URL}/api/ping`).catch(() => {});
-    const search = document.getElementById('search-input');
+    
+    // Adaptation de l'écouteur pour l'ID "search-match"
+    const search = document.getElementById('search-match');
     if (search) search.addEventListener('input', filtrerMatchs);
     
     setTimeout(() => {
         const loader = document.getElementById('loader-hiram');
         if(loader) {
             loader.style.opacity = '0';
-            setTimeout(() => { loader.style.display = 'none'; verifierStatutPaiement(); }, 1000);
+            setTimeout(() => { 
+                loader.style.display = 'none'; 
+                verifierStatutPaiement(); 
+            }, 1000);
         }
     }, 2000);
 });
 
 function copierNumero() { navigator.clipboard.writeText("068424624"); alert("Numéro copié !"); }
+
+function envoyerNotificationPaiement() {
+    const num = document.getElementById('client-phone').value;
+    if (num.length < 9) return alert("Numéro invalide");
+    document.getElementById('form-confirmation').style.display = 'none';
+    document.getElementById('wait-message').style.display = 'block';
+    
+    // Ouvre le mail en arrière-plan
+    window.location.href = `mailto:kyaraopenL@gmail.com?subject=PAIEMENT&body=Dépôt de 50F fait par le ${num}`;
+}
+
+function toggleGuide() {
+    const modal = document.getElementById('modal-guide');
+    if(modal.style.display === 'flex') modal.style.display = 'none';
+    else modal.style.display = 'flex';
+}

@@ -33,19 +33,19 @@
 
         <main class="content-scroll">
             <div id="home-section" class="tab-content active">
-                <section class="card analysis-form">
-                    <h2 class="card-title" id="text-new-analysis">Nouvelle Analyse IA</h2>
-                    <div class="input-row">
-                        <input type="text" id="home-team" placeholder="Domicile">
-                        <span class="vs-divider">VS</span>
-                        <input type="text" id="away-team" placeholder="Extérieur">
-                    </div>
-                    <button class="main-btn" onclick="lancerAnalyseIA(document.getElementById('home-team').value, document.getElementById('away-team').value)">
-                        <span id="text-launch-ia">Lancer l'IA</span>
-                        <i class="fas fa-bolt"></i>
-                    </button>
-                    <div id="analysis-output" style="margin-top: 20px;"></div>
-                </section>
+   <section class="card analysis-form">
+    <h2 class="card-title" id="text-new-analysis">Nouvelle Analyse IA</h2>
+    <div class="input-row">
+        <input type="text" id="home-team" placeholder="Domicile" autocomplete="off">
+        <span class="vs-divider">VS</span>
+        <input type="text" id="away-team" placeholder="Extérieur" autocomplete="off">
+    </div>
+    <button class="main-btn" onclick="lancerAnalyseIA()">
+        <span id="text-launch-ia">Lancer l'IA</span>
+        <i class="fas fa-bolt"></i>
+    </button>
+    <div id="analysis-output" style="margin-top: 20px;"></div>
+</section>
                 <h3 class="section-label" id="text-daily-stats">Pronostics du jour</h3>
                 <div id="match-feed"></div>
             </div>
