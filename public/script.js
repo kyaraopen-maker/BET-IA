@@ -1,7 +1,7 @@
 // --- CONFIGURATION HIRAM ARCHITECH WEB ---
 const API_KEY = '1280eb84a2b04228b4b3ba402532d615'; 
 const PROXY = 'https://cors-anywhere.herokuapp.com/';
-const SERVER_URL = 'http://localhost:3000/api/analyse-expert'; 
+const SERVER_URL = 'https://bet-ia-2.onrender.com/api/analyse-expert'; 
 
 let sessionValide = false; // L'accès est perdu si on actualise la page
 
