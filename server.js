@@ -10,7 +10,6 @@ const app = express();
 // --- CONFIGURATION MIDDELWARES ---
 app.use(cors());
 app.use(express.json());
-// Servir les fichiers du dossier public (HTML, CSS, JS)
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- CONFIGURATION HIRAM ARCHITECH WEB ---
@@ -21,7 +20,6 @@ const MON_PASS_APP = "kyarabusness";
 
 const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
-// Configuration du transporteur de mail
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -32,34 +30,38 @@ const transporter = nodemailer.createTransport({
 
 // --- ROUTES ---
 
-// Route principale : Charge ton fichier index.html
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Route "Pulsion" pour empêcher le mode veille
 app.get('/api/ping', (req, res) => {
     res.status(200).send("Réveillé");
 });
 
-// --- NOUVELLE ROUTE : RÉCUPÉRATION DES MATCHS (POUR LE CALENDRIER) ---
+// --- ROUTE : MATCHS DE LA SEMAINE (7 JOURS) ---
 app.get('/api/matches', async (req, res) => {
     try {
-        const response = await axios.get('https://api.football-data.org/v4/matches?competitions=PL,FL1,CL,BL1,SA,PD,DED,PPL', {
+        const today = new Date();
+        const nextWeek = new Date();
+        nextWeek.setDate(today.getDate() + 7);
+
+        const dateFrom = today.toISOString().split('T')[0];
+        const dateTo = nextWeek.toISOString().split('T')[0];
+
+        console.log(`📅 Récupération des matchs du ${dateFrom} au ${dateTo}`);
+
+        const response = await axios.get(`https://api.football-data.org/v4/matches?dateFrom=${dateFrom}&dateTo=${dateTo}&competitions=PL,FL1,CL,BL1,SA,PD,DED,PPL`, {
             headers: { 'X-Auth-Token': API_KEY_FOOT }
         });
         res.json(response.data);
     } catch (error) {
         console.error("❌ Erreur API Football:", error.message);
-        res.status(500).json({ error: "Impossible de charger les matchs" });
+        res.status(500).json({ error: "Impossible de charger les matchs de la semaine" });
     }
 });
 
-// Route : Notification de paiement
 app.post('/api/notif-paiement', (req, res) => {
     const { numero_client, projet } = req.body;
-    console.log(`💰 ALERTE PAIEMENT : ${numero_client} pour ${projet}`);
-
     const mailOptions = {
         from: `HIRAM ALERT <${MON_GMAIL}>`,
         to: MON_GMAIL,
@@ -76,11 +78,8 @@ app.post('/api/notif-paiement', (req, res) => {
     });
 });
 
-// Route : Analyse Expert Gemini
 app.post('/api/analyse-expert', async (req, res) => {
     const { homeName, awayName } = req.body;
-    console.log(`📡 Analyse en cours : ${homeName} vs ${awayName}`);
-
     try {
         let contexteSportif = "Données H2H non disponibles.";
         try {
@@ -93,61 +92,29 @@ app.post('/api/analyse-expert', async (req, res) => {
                     `${m.homeTeam.name} ${m.score.fullTime.home}-${m.score.fullTime.away} ${m.awayTeam.name}`
                 ).join(', ');
             }
-        } catch (e) {
-            console.log("⚠️ API Football non jointe, passage en analyse pure IA.");
-        }
+        } catch (e) {}
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        const prompt = `
-            Tu es l'analyste expert de HIRAM Architech Web à Brazzaville (Enki).
-            Analyse ce match : ${homeName} vs ${awayName}.
-            Historique récent : ${contexteSportif}.
-            
-            Instructions :
-            1. Donne le score probable.
-            2. Identifie les 2 joueurs clés.
-            3. Calcule les probabilités (Victoire/Nul).
-
-            Réponds EXCLUSIVEMENT sous ce format JSON strict :
-            {
-                "score": "X - X",
-                "confidence": 85,
-                "win_probability": "XX%",
-                "draw_probability": "XX%",
-                "home_form": "VVNDV",
-                "away_form": "VNDNV",
-                "avg_goals": "2.5",
-                "key_players": [
-                    {"name": "Joueur 1", "impact": "Raison"},
-                    {"name": "Joueur 2", "impact": "Raison"}
-                ],
-                "ai_analysis": "Verdict technique court."
-            }
-        `;
+        const prompt = `Analyse ce match : ${homeName} vs ${awayName}. Historique : ${contexteSportif}. Réponds EXCLUSIVEMENT en JSON avec : score, confidence, win_probability, draw_probability, home_form, away_form, avg_goals, key_players, ai_analysis.`;
 
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
+        
+        // Nettoyage robuste du JSON
         let cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-        const aiResponse = JSON.parse(cleanJson);
-
-        res.json({ ...aiResponse, status: "SUCCESS" });
-
+        const parsedData = JSON.parse(cleanJson);
+        
+        res.json({ ...parsedData, status: "SUCCESS" });
     } catch (error) {
-        console.error("❌ Erreur Moteur HIRAM:", error.message);
-        res.status(500).json({ 
-            error: "Erreur d'analyse", 
-            ai_analysis: "Le cerveau HIRAM est en maintenance technique." 
-    });
+        console.error("❌ Erreur Analyse:", error.message);
+        res.status(500).json({ error: "Erreur d'analyse" });
     }
 });
 
-// --- LANCEMENT DU SERVEUR ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`----------------------------------------`);
-    console.log(`🚀 SERVEUR HIRAM ACTIF (Analyse + Mails)`);
-    console.log(`📡 URL : http://localhost:${PORT}`);
-    console.log(`📡 Port Render : ${PORT}`);
+    console.log(`🚀 SERVEUR HIRAM ACTIF sur le port ${PORT}`);
+    console.log(`📡 Matchs de la semaine activés`);
     console.log(`----------------------------------------`);
 });
