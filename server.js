@@ -5,6 +5,8 @@ const nodemailer = require('nodemailer');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
+// Cela dit à Express que tes fichiers (HTML, CSS, JS client) sont dans le dossier "public"
+app.use(express.static('public'));
 app.use(cors());
 app.use(express.json());
 
@@ -121,6 +123,12 @@ app.post('/api/analyse-expert', async (req, res) => {
             ai_analysis: "Le cerveau HIRAM est en maintenance technique." 
         });
     }
+});
+
+const path = require('path');
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 const PORT = 3000;
