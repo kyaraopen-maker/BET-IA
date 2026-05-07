@@ -100,7 +100,6 @@ function showTab(tabId, element) {
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add('active');
     
-    // Si l'élément est passé, on l'active, sinon on cherche par classe
     if (element) {
         element.classList.add('active');
     } else {
@@ -112,57 +111,55 @@ function showTab(tabId, element) {
     if(tabId === 'stats-section') fetchVraisMatchsReels();
 }
 
-// --- RÉCUPÉRATION DES MATCHS (CORRIGÉE) ---
+// --- RÉCUPÉRATION DES MATCHS (VERSION ROBUSTE) ---
 async function fetchVraisMatchsReels() {
     const container = document.getElementById('all-matches-list');
     if(!container) return;
     
-    container.innerHTML = '<div class="loading-text">Chargement des matchs de la semaine...</div>';
+    container.innerHTML = '<div class="loading-text">Chargement des matchs... (Patientez 10s)</div>';
 
-    try {
-        // Ajout d'un timeout pour ne pas attendre 30 ans si Render est lent
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-        const response = await fetch(`${SERVER_URL}/api/matches`, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        
-        const data = await response.json();
-        
-        container.innerHTML = `<div class="date-divider">Matchs de la semaine</div>`; 
-
-        if (!data.matches || data.matches.length === 0) {
-            container.innerHTML += `<div class="loading-text">Aucun match disponible pour les 7 prochains jours.</div>`;
-            return;
-        }
-
-        data.matches.forEach(match => {
-            const dateObj = new Date(match.utcDate);
-            const dateMatch = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-            const heureMatch = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const charger = async () => {
+        try {
+            const response = await fetch(`${SERVER_URL}/api/matches`);
+            const data = await response.json();
             
-            // On nettoie les noms pour éviter de casser le JS
-            const home = (match.homeTeam.shortName || match.homeTeam.name).replace(/'/g, " ");
-            const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
+            if (!data.matches || data.matches.length === 0) {
+                container.innerHTML = `<div class="loading-text">Aucun match disponible pour les 7 prochains jours.</div>`;
+                return;
+            }
 
-            container.innerHTML += `
-                <div class="card mini-match-card">
-                    <div class="mini-info-box">
-                        <span class="match-date-badge">${dateMatch}</span>
-                        <div class="teams-display">
-                            <span class="team-name">${home}</span>
-                            <span class="vs-text">VS</span>
-                            <span class="team-name">${away}</span>
+            container.innerHTML = `<div class="date-divider">Matchs de la semaine</div>`; 
+
+            data.matches.forEach(match => {
+                const dateObj = new Date(match.utcDate);
+                const dateMatch = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+                const heureMatch = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                
+                const home = (match.homeTeam.shortName || match.homeTeam.name).replace(/'/g, " ");
+                const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
+
+                container.innerHTML += `
+                    <div class="card mini-match-card">
+                        <div class="mini-info-box">
+                            <span class="match-date-badge">${dateMatch}</span>
+                            <div class="teams-display">
+                                <span class="team-name">${home}</span>
+                                <span class="vs-text">VS</span>
+                                <span class="team-name">${away}</span>
+                            </div>
+                            <span class="league-tag">${heureMatch}</span>
                         </div>
-                        <span class="league-tag">${heureMatch}</span>
-                    </div>
-                    <button class="action-btn" onclick="preRemplir('${home}', '${away}')">Analyser</button>
-                </div>`;
-        });
-    } catch (error) {
-        console.error("Erreur HIRAM:", error);
-        container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Le serveur Render met du temps à répondre. Réessaie dans 10 secondes.</div>`;
-    }
+                        <button class="action-btn" onclick="preRemplir('${home}', '${away}')">Analyser</button>
+                    </div>`;
+            });
+        } catch (error) {
+            console.error("Erreur HIRAM:", error);
+            container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Le serveur se réveille toujours... <br> <button onclick="fetchVraisMatchsReels()" style="background:#00d4ff; border:none; padding:10px; margin-top:10px; border-radius:5px; cursor:pointer;">Réessayer</button></div>`;
+        }
+    };
+
+    // On lance le chargement
+    charger();
 }
 
 async function lancerAnalyseIA() {
@@ -220,7 +217,6 @@ function afficherResultatFinal(dom, ext, container, dataIA) {
 function preRemplir(dom, ext) {
     document.getElementById('home-team').value = dom;
     document.getElementById('away-team').value = ext;
-    // On bascule sur l'onglet Analyse (le premier)
     showTab('home-section');
 }
 
