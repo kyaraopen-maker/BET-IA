@@ -3,22 +3,26 @@ const axios = require('axios');
 const cors = require('cors');
 const nodemailer = require('nodemailer'); 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const path = require('path');
 
 const app = express();
-// Cela dit à Express que tes fichiers (HTML, CSS, JS client) sont dans le dossier "public"
-app.use(express.static('public'));
+
+// --- CONFIGURATION MIDDELWARES ---
 app.use(cors());
 app.use(express.json());
+// Servir les fichiers du dossier public (HTML, CSS, JS)
+app.use(express.static(path.join(__dirname, 'public')));
 
 // --- CONFIGURATION HIRAM ARCHITECH WEB ---
-const API_KEY_FOOT = '1280eb84a2b04228b4b3ba402532d615';
-const GEMINI_KEY = "AIzaSyBJaMLUh4BcfUns_Tr3N9oGleB49wv1Apg"; 
+// Note : Sur Render, utilise process.env.API_KEY_FOOT etc. pour plus de sécurité
+const API_KEY_FOOT = process.env.API_KEY_FOOT || '1280eb84a2b04228b4b3ba402532d615';
+const GEMINI_KEY = process.env.GEMINI_KEY || "AIzaSyBJaMLUh4BcfUns_Tr3N9oGleB49wv1Apg"; 
 const MON_GMAIL = "kyaraopenL@gmail.com"; 
-const MON_PASS_APP = "kyarabusness"; // Utilise bien un code d'application Google ici
+const MON_PASS_APP = "kyarabusness"; 
 
 const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
-// Configuration du transporteur de mail (Gmail)
+// Configuration du transporteur de mail
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -27,14 +31,21 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+// --- ROUTES ---
+
+// Route principale : Charge ton fichier index.html
 app.get('/', (req, res) => {
-    res.send("<h1>Cerveau HIRAM Sportif v4.0</h1><p>Statut : Connecté & Prêt pour les paiements (Sans stockage).</p>");
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// --- ROUTE : NOTIFICATION DE PAIEMENT (WIZA STYLE) ---
+// Route "Pulsion" pour empêcher le mode veille
+app.get('/api/ping', (req, res) => {
+    res.status(200).send("Réveillé");
+});
+
+// Route : Notification de paiement
 app.post('/api/notif-paiement', (req, res) => {
     const { numero_client, projet } = req.body;
-
     console.log(`💰 ALERTE PAIEMENT : ${numero_client} pour ${projet}`);
 
     const mailOptions = {
@@ -53,11 +64,7 @@ app.post('/api/notif-paiement', (req, res) => {
     });
 });
 
-// --- ROUTE : ANALYSE EXPERT GEMINI ---
-// Route "Pulsion" pour empêcher le mode veille
-app.get('/api/ping', (req, res) => {
-    res.status(200).send("Réveillé");
-});
+// Route : Analyse Expert Gemini
 app.post('/api/analyse-expert', async (req, res) => {
     const { homeName, awayName } = req.body;
     console.log(`📡 Analyse en cours : ${homeName} vs ${awayName}`);
@@ -109,8 +116,6 @@ app.post('/api/analyse-expert', async (req, res) => {
 
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
-        
-        // Nettoyage du JSON au cas où Gemini ajoute des balises ```
         let cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
         const aiResponse = JSON.parse(cleanJson);
 
@@ -121,20 +126,17 @@ app.post('/api/analyse-expert', async (req, res) => {
         res.status(500).json({ 
             error: "Erreur d'analyse", 
             ai_analysis: "Le cerveau HIRAM est en maintenance technique." 
-        });
+    });
     }
 });
 
-const path = require('path');
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-const PORT = 3000;
-app.listen(PORT, () => {
+// --- LANCEMENT DU SERVEUR ---
+// Render utilise un port dynamique, process.env.PORT est donc obligatoire
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`----------------------------------------`);
     console.log(`🚀 SERVEUR HIRAM ACTIF (Analyse + Mails)`);
-    console.log(`📡 Port : ${PORT}`);
+    console.log(`📡 URL : http://localhost:${PORT}`);
+    console.log(`📡 Port Render : ${PORT}`);
     console.log(`----------------------------------------`);
 });
