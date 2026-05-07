@@ -38,7 +38,7 @@ app.get('/api/ping', (req, res) => {
     res.status(200).send("Réveillé");
 });
 
-// --- ROUTE : MATCHS DE LA SEMAINE (7 JOURS) ---
+// --- ROUTE : MATCHS DE LA SEMAINE (CORRIGÉE) ---
 app.get('/api/matches', async (req, res) => {
     try {
         const today = new Date();
@@ -48,15 +48,19 @@ app.get('/api/matches', async (req, res) => {
         const dateFrom = today.toISOString().split('T')[0];
         const dateTo = nextWeek.toISOString().split('T')[0];
 
-        console.log(`📅 Récupération des matchs du ${dateFrom} au ${dateTo}`);
-
-        const response = await axios.get(`https://api.football-data.org/v4/matches?dateFrom=${dateFrom}&dateTo=${dateTo}&competitions=PL,FL1,CL,BL1,SA,PD,DED,PPL`, {
+        // Modification : Utilisation des query params corrects pour axios
+        const response = await axios.get(`https://api.football-data.org/v4/matches`, {
+            params: {
+                dateFrom: dateFrom,
+                dateTo: dateTo,
+                competitions: 'PL,FL1,CL,BL1,SA,PD,DED,PPL'
+            },
             headers: { 'X-Auth-Token': API_KEY_FOOT }
         });
         res.json(response.data);
     } catch (error) {
         console.error("❌ Erreur API Football:", error.message);
-        res.status(500).json({ error: "Impossible de charger les matchs de la semaine" });
+        res.status(500).json({ error: "Impossible de charger les matchs" });
     }
 });
 
@@ -95,14 +99,14 @@ app.post('/api/analyse-expert', async (req, res) => {
         } catch (e) {}
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = `Analyse ce match : ${homeName} vs ${awayName}. Historique : ${contexteSportif}. Réponds EXCLUSIVEMENT en JSON avec : score, confidence, win_probability, draw_probability, home_form, away_form, avg_goals, key_players, ai_analysis.`;
+        const prompt = `Analyse ce match : ${homeName} vs ${awayName}. Historique : ${contexteSportif}. Réponds EXCLUSIVEMENT en JSON sans texte autour avec : score, confidence, win_probability, draw_probability, home_form, away_form, avg_goals, key_players, ai_analysis.`;
 
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
         
-        // Nettoyage robuste du JSON
-        let cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-        const parsedData = JSON.parse(cleanJson);
+        // Modification : Extraction robuste pour éviter les erreurs de parsing si Gemini ajoute du texte
+        const jsonMatch = responseText.match(/\{.*\}/s);
+        const parsedData = JSON.parse(jsonMatch[0]);
         
         res.json({ ...parsedData, status: "SUCCESS" });
     } catch (error) {
@@ -113,8 +117,5 @@ app.post('/api/analyse-expert', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`----------------------------------------`);
     console.log(`🚀 SERVEUR HIRAM ACTIF sur le port ${PORT}`);
-    console.log(`📡 Matchs de la semaine activés`);
-    console.log(`----------------------------------------`);
 });
