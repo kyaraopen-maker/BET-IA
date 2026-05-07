@@ -60,12 +60,15 @@ function copierNumero() {
     alert("Numéro copié : 068424624");
 }
 
-// --- ANIMATION LOADER ---
+// --- ANIMATION LOADER & RÉVEIL SERVEUR ---
 document.addEventListener('DOMContentLoaded', () => {
     const textElement = document.getElementById('typing-text');
     const loader = document.getElementById('loader-hiram');
     const phrase = "BET IA ";
     let index = 0;
+
+    // On réveille le serveur Render dès l'ouverture du site
+    fetch(`${SERVER_URL}/api/ping`).catch(e => console.log("Réveil serveur..."));
 
     function typeWriter() {
         if (textElement && index < phrase.length) {
@@ -87,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
     typeWriter();
 });
 
-// --- NAVIGATION ET ANALYSE ---
+// --- NAVIGATION ---
 function showTab(tabId, element) {
     if (!verifierStatutPaiement()) return;
 
@@ -96,26 +99,40 @@ function showTab(tabId, element) {
     
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add('active');
-    if (element) element.classList.add('active');
+    
+    // Si l'élément est passé, on l'active, sinon on cherche par classe
+    if (element) {
+        element.classList.add('active');
+    } else {
+        const links = document.querySelectorAll('.tab-link');
+        if(tabId === 'stats-section') links[1].classList.add('active');
+        if(tabId === 'home-section') links[0].classList.add('active');
+    }
 
     if(tabId === 'stats-section') fetchVraisMatchsReels();
 }
 
-// --- RÉCUPÉRATION DES MATCHS VIA TON SERVEUR (FINI LES ERREURS CORS) ---
+// --- RÉCUPÉRATION DES MATCHS (CORRIGÉE) ---
 async function fetchVraisMatchsReels() {
     const container = document.getElementById('all-matches-list');
     if(!container) return;
-    container.innerHTML = '<div class="loading-text">Synchronisation du cerveau HIRAM...</div>';
+    
+    container.innerHTML = '<div class="loading-text">Chargement des matchs de la semaine...</div>';
 
     try {
-        // On appelle ton propre serveur qui sert de pont (Proxy)
-        const response = await fetch(`${SERVER_URL}/api/matches`);
+        // Ajout d'un timeout pour ne pas attendre 30 ans si Render est lent
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        const response = await fetch(`${SERVER_URL}/api/matches`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
         const data = await response.json();
         
-        container.innerHTML = `<div class="date-divider">Matchs en direct & à venir</div>`; 
+        container.innerHTML = `<div class="date-divider">Matchs de la semaine</div>`; 
 
         if (!data.matches || data.matches.length === 0) {
-            container.innerHTML += `<div class="loading-text">Aucun match disponible pour le moment.</div>`;
+            container.innerHTML += `<div class="loading-text">Aucun match disponible pour les 7 prochains jours.</div>`;
             return;
         }
 
@@ -124,18 +141,18 @@ async function fetchVraisMatchsReels() {
             const dateMatch = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
             const heureMatch = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
             
-            // Nettoyage des noms pour éviter les erreurs de clics
-            const home = match.homeTeam.name.replace(/'/g, " ");
-            const away = match.awayTeam.name.replace(/'/g, " ");
+            // On nettoie les noms pour éviter de casser le JS
+            const home = (match.homeTeam.shortName || match.homeTeam.name).replace(/'/g, " ");
+            const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
 
             container.innerHTML += `
                 <div class="card mini-match-card">
                     <div class="mini-info-box">
                         <span class="match-date-badge">${dateMatch}</span>
                         <div class="teams-display">
-                            <span class="team-name">${match.homeTeam.shortName || match.homeTeam.name}</span>
+                            <span class="team-name">${home}</span>
                             <span class="vs-text">VS</span>
-                            <span class="team-name">${match.awayTeam.shortName || match.awayTeam.name}</span>
+                            <span class="team-name">${away}</span>
                         </div>
                         <span class="league-tag">${heureMatch}</span>
                     </div>
@@ -143,8 +160,8 @@ async function fetchVraisMatchsReels() {
                 </div>`;
         });
     } catch (error) {
-        console.error("Erreur Calendrier:", error);
-        container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Erreur de connexion au serveur.</div>`;
+        console.error("Erreur HIRAM:", error);
+        container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Le serveur Render met du temps à répondre. Réessaie dans 10 secondes.</div>`;
     }
 }
 
@@ -153,14 +170,14 @@ async function lancerAnalyseIA() {
     const ext = document.getElementById('away-team').value;
 
     if (!dom || !ext) {
-        alert("Veuillez sélectionner un match.");
+        alert("Choisis un match dans le calendrier d'abord !");
         return;
     }
 
     if (!verifierStatutPaiement()) return;
     
     const resultContainer = document.getElementById('analysis-output'); 
-    resultContainer.innerHTML = `<div class="loading-box"><div class="spinner"></div><p>Analyse HIRAM en cours...</p></div>`;
+    resultContainer.innerHTML = `<div class="loading-box"><div class="spinner"></div><p>Intelligence HIRAM en cours...</p></div>`;
 
     try {
         const response = await fetch(`${SERVER_URL}/api/analyse-expert`, {
@@ -169,9 +186,14 @@ async function lancerAnalyseIA() {
             body: JSON.stringify({ homeName: dom, awayName: ext })
         });
         const dataIA = await response.json();
-        afficherResultatFinal(dom, ext, resultContainer, dataIA);
+        
+        if(dataIA.status === "SUCCESS") {
+            afficherResultatFinal(dom, ext, resultContainer, dataIA);
+        } else {
+            throw new Error("Erreur IA");
+        }
     } catch (error) {
-        resultContainer.innerHTML = `<div class="loading-text" style="color:#ff4d4d">❌ Erreur : Serveur IA déconnecté.</div>`;
+        resultContainer.innerHTML = `<div class="loading-text" style="color:#ff4d4d">❌ Erreur : Le cerveau IA est saturé. Réessaie.</div>`;
     }
 }
 
@@ -180,13 +202,16 @@ function afficherResultatFinal(dom, ext, container, dataIA) {
         <div class="card analysis-card animated-bounce-in" style="margin-top:20px; border: 1px solid #00d4ff; background: rgba(0,0,0,0.95); padding:20px; border-radius:15px;">
             <h3 style="color:#00d4ff; font-size:12px;"><i class="fas fa-microchip"></i> HIRAM EXPERT ANALYTICS</h3>
             <h2 style="font-size:52px; color:#fff; text-align:center;">${dataIA.score}</h2>
-            <p style="text-align:center; color:#00d4ff;">Confiance : ${dataIA.confidence}%</p>
-            <div style="display:flex; justify-content:space-around; margin:15px 0; color:#fff; font-weight:bold;">
-                <span>Victoire: ${dataIA.win_probability}</span>
-                <span>Nul: ${dataIA.draw_probability}</span>
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                 <span style="color:#00d4ff;">Confiance : ${dataIA.confidence}%</span>
+                 <span style="color:#00d4ff;">Buts moy : ${dataIA.avg_goals}</span>
             </div>
-            <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:10px; color:#fff; font-size:12px; line-height:1.5;">
-                ${dataIA.ai_analysis}
+            <div style="display:flex; justify-content:space-around; margin:15px 0; color:#fff; font-weight:bold; background:rgba(0,212,255,0.1); padding:10px; border-radius:5px;">
+                <span>V: ${dataIA.win_probability}</span>
+                <span>N: ${dataIA.draw_probability}</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:10px; color:#fff; font-size:13px; line-height:1.5;">
+                <i class="fas fa-quote-left" style="color:#00d4ff;"></i> ${dataIA.ai_analysis}
             </div>
         </div>
     `;
@@ -195,9 +220,8 @@ function afficherResultatFinal(dom, ext, container, dataIA) {
 function preRemplir(dom, ext) {
     document.getElementById('home-team').value = dom;
     document.getElementById('away-team').value = ext;
-    // On simule le clic sur le premier onglet
-    const firstTabLink = document.querySelector('.tab-link');
-    showTab('home-section', firstTabLink);
+    // On bascule sur l'onglet Analyse (le premier)
+    showTab('home-section');
 }
 
 function toggleGuide() {
