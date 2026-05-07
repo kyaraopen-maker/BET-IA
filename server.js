@@ -12,22 +12,16 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- CONFIGURATION HIRAM ARCHITECH WEB ---
+// --- CONFIGURATION HIRAM ---
 const MON_GMAIL = "kyaraopenL@gmail.com"; 
 const MON_PASS_APP = "kyarabusness"; 
 const GEMINI_KEY = process.env.GEMINI_KEY || "AIzaSyBJaMLUh4BcfUns_Tr3N9oGleB49wv1Apg"; 
-
-// TON TOKEN SPORTMONKS (Validé et actif)
 const SPORTMONKS_TOKEN = "bWLHVupyKRR8yhXRH7CcBlAsRr4GKqqabATNCBg9oocGZvzedVpZSDo5Ejje";
 
 const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-
 const transporter = nodemailer.createTransport({
     service: 'gmail',
-    auth: {
-        user: MON_GMAIL,
-        pass: MON_PASS_APP
-    }
+    auth: { user: MON_GMAIL, pass: MON_PASS_APP }
 });
 
 // --- ROUTES ---
@@ -40,22 +34,22 @@ app.get('/api/ping', (req, res) => {
     res.status(200).send("HIRAM_ACTIVE");
 });
 
-// --- ROUTE : TOUS LES MATCHS DU MOIS (SPORTMONKS) ---
+// --- ROUTE : CALENDRIER COMPLET (MOIS & ANNÉE) ---
 app.get('/api/matches', async (req, res) => {
     try {
         const today = new Date().toISOString().split('T')[0];
-        const nextMonthDate = new Date();
-        nextMonthDate.setDate(nextMonthDate.getDate() + 30);
-        const nextMonth = nextMonthDate.toISOString().split('T')[0];
+        
+        // On définit la fin sur l'année prochaine pour avoir tout le calendrier
+        const endOfYear = "2026-12-31"; 
 
-        console.log(`⚽ HIRAM récupère le calendrier du ${today} au ${nextMonth}`);
+        console.log(`⚽ HIRAM synchronise le calendrier mondial jusqu'en décembre...`);
 
-        // Appel Sportmonks avec filtres pour les noms et les ligues
         const response = await axios.get(`https://api.sportmonks.com/v3/football/fixtures`, {
             params: {
                 api_token: SPORTMONKS_TOKEN,
                 include: 'participants;league',
-                filters: `fixtureLeagues:8,384,82,564;fixtureDates:${today},${nextMonth}` 
+                filters: `fixtureDates:${today},${endOfYear}`,
+                per_page: 150 // On augmente le nombre de matchs par page
             }
         });
 
@@ -63,54 +57,55 @@ app.get('/api/matches', async (req, res) => {
             return res.json({ matches: [] });
         }
 
-        // Transformation au format de ton frontend
-        const matches = response.data.data.map(f => {
-            const home = f.participants.find(p => p.meta.location === 'home');
-            const away = f.participants.find(p => p.meta.location === 'away');
-            
-            return {
-                homeTeam: { name: home ? home.name : "Équipe Locale" },
-                awayTeam: { name: away ? away.name : "Équipe Visiteuse" },
-                utcDate: f.starting_at,
-                competition: { name: f.league ? f.league.name : "Championnat" }
-            };
-        });
+        // Transformation et tri par date (le plus proche en haut)
+        const matches = response.data.data
+            .map(f => {
+                const home = f.participants.find(p => p.meta.location === 'home');
+                const away = f.participants.find(p => p.meta.location === 'away');
+                return {
+                    homeTeam: { name: home ? home.name : "Équipe Locale" },
+                    awayTeam: { name: away ? away.name : "Équipe Visiteuse" },
+                    utcDate: f.starting_at,
+                    competition: { name: f.league ? f.league.name : "Football" }
+                };
+            })
+            .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
 
-        console.log(`✅ ${matches.length} matchs réels chargés pour le mois.`);
+        console.log(`✅ ${matches.length} matchs chargés dans le système HIRAM.`);
         res.json({ matches });
 
     } catch (error) {
         console.error("❌ Erreur Sportmonks:", error.message);
-        res.status(500).json({ matches: [], error: "L'IA synchronise les données..." });
+        res.status(500).json({ matches: [], error: "Base de données en mise à jour..." });
     }
 });
 
-// --- ROUTE : ANALYSE EXPERT GEMINI ---
+// --- ANALYSE IA (GEMINI 1.5 FLASH) ---
 app.post('/api/analyse-expert', async (req, res) => {
     const { homeName, awayName } = req.body;
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = `Analyse foot : ${homeName} vs ${awayName}. Réponds UNIQUEMENT en JSON : score, confidence, win_probability, draw_probability, ai_analysis.`;
+        const prompt = `Analyse foot approfondie : ${homeName} vs ${awayName}. 
+        Réponds UNIQUEMENT en JSON pur avec ces clés : score, confidence, win_probability, draw_probability, ai_analysis.`;
         
         const result = await model.generateContent(prompt);
         const jsonMatch = result.response.text().match(/\{.*\}/s);
         
-        if (!jsonMatch) throw new Error("IA Format Error");
+        if (!jsonMatch) throw new Error("Format IA incorrect");
         res.json({ ...JSON.parse(jsonMatch[0]), status: "SUCCESS" });
     } catch (error) {
-        console.error("❌ Erreur Analyse:", error.message);
         res.status(500).json({ error: "Analyse indisponible" });
     }
 });
 
-// --- NOTIFICATION PAIEMENT ---
+// --- SYSTÈME D'ALERTE PAIEMENT ---
 app.post('/api/notif-paiement', (req, res) => {
     const { numero_client, projet } = req.body;
     const mailOptions = {
         from: `HIRAM ALERT <${MON_GMAIL}>`,
         to: MON_GMAIL,
         subject: `🚨 PAIEMENT DÉCLARÉ : ${numero_client}`,
-        text: `Salut Enki, paiement de 50F déclaré sur ${projet} par le ${numero_client}. Vérifie MoMo.`
+        text: `Salut Enki, un paiement de 50F a été déclaré pour ${projet}.\nNuméro client : ${numero_client}.\n\nVérifie ton compte MoMo.`
     };
 
     transporter.sendMail(mailOptions, (error) => {
@@ -118,7 +113,6 @@ app.post('/api/notif-paiement', (req, res) => {
     });
 });
 
-// --- DÉMARRAGE ---
 const PORT = process.env.PORT || 10000; 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 SERVEUR HIRAM PRÊT SUR PORT ${PORT}`);
