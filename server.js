@@ -7,7 +7,7 @@ const path = require('path');
 
 const app = express();
 
-// --- CONFIGURATION MIDDELWARES ---
+// --- CONFIGURATION MIDDLEWARES ---
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -34,22 +34,20 @@ app.get('/api/ping', (req, res) => {
     res.status(200).send("HIRAM_ACTIVE");
 });
 
-// --- ROUTE : CALENDRIER COMPLET (MOIS & ANNÉE) ---
+// --- ROUTE : CALENDRIER COMPLET (EUROPA & CONFERENCE INCLUS) ---
 app.get('/api/matches', async (req, res) => {
     try {
         const today = new Date().toISOString().split('T')[0];
-        
-        // On définit la fin sur l'année prochaine pour avoir tout le calendrier
         const endOfYear = "2026-12-31"; 
 
-        console.log(`⚽ HIRAM synchronise le calendrier mondial jusqu'en décembre...`);
+        console.log(`⚽ HIRAM synchronise les chocs du jour et de l'année...`);
 
         const response = await axios.get(`https://api.sportmonks.com/v3/football/fixtures`, {
             params: {
                 api_token: SPORTMONKS_TOKEN,
                 include: 'participants;league',
                 filters: `fixtureDates:${today},${endOfYear}`,
-                per_page: 150 // On augmente le nombre de matchs par page
+                per_page: 150 
             }
         });
 
@@ -57,7 +55,6 @@ app.get('/api/matches', async (req, res) => {
             return res.json({ matches: [] });
         }
 
-        // Transformation et tri par date (le plus proche en haut)
         const matches = response.data.data
             .map(f => {
                 const home = f.participants.find(p => p.meta.location === 'home');
@@ -71,7 +68,7 @@ app.get('/api/matches', async (req, res) => {
             })
             .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
 
-        console.log(`✅ ${matches.length} matchs chargés dans le système HIRAM.`);
+        console.log(`✅ ${matches.length} matchs réels chargés.`);
         res.json({ matches });
 
     } catch (error) {
@@ -86,7 +83,7 @@ app.post('/api/analyse-expert', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const prompt = `Analyse foot approfondie : ${homeName} vs ${awayName}. 
-        Réponds UNIQUEMENT en JSON pur avec ces clés : score, confidence, win_probability, draw_probability, ai_analysis.`;
+        Réponds UNIQUEMENT en JSON pur avec : score, confidence, win_probability, draw_probability, ai_analysis.`;
         
         const result = await model.generateContent(prompt);
         const jsonMatch = result.response.text().match(/\{.*\}/s);
@@ -94,6 +91,7 @@ app.post('/api/analyse-expert', async (req, res) => {
         if (!jsonMatch) throw new Error("Format IA incorrect");
         res.json({ ...JSON.parse(jsonMatch[0]), status: "SUCCESS" });
     } catch (error) {
+        console.error("❌ Erreur IA:", error.message);
         res.status(500).json({ error: "Analyse indisponible" });
     }
 });
@@ -109,10 +107,15 @@ app.post('/api/notif-paiement', (req, res) => {
     };
 
     transporter.sendMail(mailOptions, (error) => {
-        res.status(error ? 500 : 200).json({ status: error ? "error" : "success" });
+        if (error) {
+            console.error("❌ Erreur Mail:", error.message);
+            return res.status(500).json({ status: "error" });
+        }
+        res.status(200).json({ status: "success" });
     });
 });
 
+// --- DÉMARRAGE ---
 const PORT = process.env.PORT || 10000; 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 SERVEUR HIRAM PRÊT SUR PORT ${PORT}`);
