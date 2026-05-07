@@ -1,12 +1,9 @@
 // --- CONFIGURATION HIRAM ARCHITECH WEB ---
-const API_KEY = '1280eb84a2b04228b4b3ba402532d615'; 
-const PROXY = 'https://cors-anywhere.herokuapp.com/';
-const SERVER_URL = 'https://bet-ia-2.onrender.com/api/analyse-expert'; 
+const SERVER_URL = 'https://bet-ia-2.onrender.com'; // Ton URL de base Render
 
-let sessionValide = false; // L'accès est perdu si on actualise la page
+let sessionValide = false; 
 
 // --- SYSTÈME DE VÉRIFICATION D'ACCÈS ---
-
 function verifierStatutPaiement() {
     const paymentScreen = document.getElementById('payment-screen');
     if (sessionValide) {
@@ -34,8 +31,7 @@ function checkAdminCode() {
     }
 }
 
-// --- NOUVELLE FONCTION : NOTIFICATION PAR GMAIL (DIRECT) ---
-
+// --- NOTIFICATION PAR GMAIL (DIRECT) ---
 function envoyerNotificationPaiement() {
     const numero = document.getElementById('client-phone').value;
     
@@ -44,22 +40,19 @@ function envoyerNotificationPaiement() {
         return;
     }
 
-    // Préparation du mail pour Enki
     const destinataire = "hiramearchitecteweb@gmail.com";
     const sujet = encodeURIComponent("💰 PAIEMENT CONGO BET IA - " + numero);
     const corps = encodeURIComponent("Bonjour Enki,\n\nJe viens d'effectuer le dépôt de 50F pour le service BET IA.\nMon numéro de dépôt : " + numero + "\n\nMerci de me transmettre le code d'accès.");
     
-    // Ouvre Gmail/Mail sur le téléphone
     window.location.href = `mailto:${destinataire}?subject=${sujet}&body=${corps}`;
 
-    // Mise à jour de l'interface
     const formConf = document.getElementById('form-confirmation');
     const waitMsg = document.getElementById('wait-message');
     if(formConf) formConf.style.display = 'none';
     if(waitMsg) waitMsg.style.display = 'block';
 
     setTimeout(() => {
-        alert("Envoie le mail qui vient de s'ouvrir. Enki te donnera le code après vérification sur son MoMo !");
+        alert("Envoie le mail qui vient de s'ouvrir. Enki te donnera le code après vérification !");
     }, 1000);
 }
 
@@ -68,8 +61,7 @@ function copierNumero() {
     alert("Numéro copié : 068424624");
 }
 
-// --- LOGIQUE D'ANIMATION (LOADER) ---
-
+// --- ANIMATION LOADER ---
 document.addEventListener('DOMContentLoaded', () => {
     const textElement = document.getElementById('typing-text');
     const loader = document.getElementById('loader-hiram');
@@ -97,7 +89,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // --- NAVIGATION ET ANALYSE ---
-
 function showTab(tabId, element) {
     if (!verifierStatutPaiement()) return;
 
@@ -111,26 +102,32 @@ function showTab(tabId, element) {
     if(tabId === 'stats-section') fetchVraisMatchsReels();
 }
 
+// --- RÉCUPÉRATION DES MATCHS VIA TON SERVEUR (FINI LES ERREURS CORS) ---
 async function fetchVraisMatchsReels() {
     const container = document.getElementById('all-matches-list');
     if(!container) return;
-    container.innerHTML = '<div class="loading-text">Synchronisation du calendrier...</div>';
+    container.innerHTML = '<div class="loading-text">Synchronisation du cerveau HIRAM...</div>';
 
     try {
-        const urlAPI = `https://api.football-data.org/v4/matches?competitions=PL,FL1,CL,BL1,SA,PD,DED,PPL`;
-        const response = await fetch(PROXY + urlAPI, {
-            headers: { 'X-Auth-Token': API_KEY, 'Content-Type': 'application/json' }
-        });
-        
+        // On appelle ton propre serveur qui sert de pont (Proxy)
+        const response = await fetch(`${SERVER_URL}/api/matches`);
         const data = await response.json();
-        container.innerHTML = `<div class="date-divider">Matchs à venir</div>`; 
+        
+        container.innerHTML = `<div class="date-divider">Matchs en direct & à venir</div>`; 
+
+        if (!data.matches || data.matches.length === 0) {
+            container.innerHTML += `<div class="loading-text">Aucun match disponible pour le moment.</div>`;
+            return;
+        }
 
         data.matches.forEach(match => {
             const dateObj = new Date(match.utcDate);
             const dateMatch = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
             const heureMatch = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-            const home = match.homeTeam.name.replace(/'/g, "\\'");
-            const away = match.awayTeam.name.replace(/'/g, "\\'");
+            
+            // Nettoyage des noms pour éviter les erreurs de clics
+            const home = match.homeTeam.name.replace(/'/g, " ");
+            const away = match.awayTeam.name.replace(/'/g, " ");
 
             container.innerHTML += `
                 <div class="card mini-match-card">
@@ -147,17 +144,27 @@ async function fetchVraisMatchsReels() {
                 </div>`;
         });
     } catch (error) {
-        container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Erreur de calendrier.</div>`;
+        console.error("Erreur Calendrier:", error);
+        container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Erreur de connexion au serveur.</div>`;
     }
 }
 
-async function lancerAnalyseIA(dom, ext) {
+async function lancerAnalyseIA() {
+    const dom = document.getElementById('home-team').value;
+    const ext = document.getElementById('away-team').value;
+
+    if (!dom || !ext) {
+        alert("Veuillez sélectionner un match.");
+        return;
+    }
+
     if (!verifierStatutPaiement()) return;
+    
     const resultContainer = document.getElementById('analysis-output'); 
     resultContainer.innerHTML = `<div class="loading-box"><div class="spinner"></div><p>Analyse HIRAM en cours...</p></div>`;
 
     try {
-        const response = await fetch(SERVER_URL, {
+        const response = await fetch(`${SERVER_URL}/api/analyse-expert`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ homeName: dom, awayName: ext })
@@ -175,7 +182,11 @@ function afficherResultatFinal(dom, ext, container, dataIA) {
             <h3 style="color:#00d4ff; font-size:12px;"><i class="fas fa-microchip"></i> HIRAM EXPERT ANALYTICS</h3>
             <h2 style="font-size:52px; color:#fff; text-align:center;">${dataIA.score}</h2>
             <p style="text-align:center; color:#00d4ff;">Confiance : ${dataIA.confidence}%</p>
-            <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:10px; color:#fff; font-size:12px;">
+            <div style="display:flex; justify-content:space-around; margin:15px 0; color:#fff; font-weight:bold;">
+                <span>Victoire: ${dataIA.win_probability}</span>
+                <span>Nul: ${dataIA.draw_probability}</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:10px; color:#fff; font-size:12px; line-height:1.5;">
                 ${dataIA.ai_analysis}
             </div>
         </div>
@@ -185,7 +196,9 @@ function afficherResultatFinal(dom, ext, container, dataIA) {
 function preRemplir(dom, ext) {
     document.getElementById('home-team').value = dom;
     document.getElementById('away-team').value = ext;
-    showTab('home-section', document.querySelector('.tab-link:first-child'));
+    // On simule le clic sur le premier onglet
+    const firstTabLink = document.querySelector('.tab-link');
+    showTab('home-section', firstTabLink);
 }
 
 function toggleGuide() {
