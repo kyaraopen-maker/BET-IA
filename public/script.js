@@ -1,6 +1,7 @@
 // --- CONFIGURATION HIRAM ARCHITECH WEB ---
 const SERVER_URL = 'https://bet-ia-2.onrender.com';
 let sessionValide = false; 
+let allMatchesData = []; // Stockage local pour permettre le filtrage instantané
 
 // --- SYSTÈME DE VÉRIFICATION D'ACCÈS ---
 function verifierStatutPaiement() {
@@ -28,6 +29,23 @@ function checkAdminCode() {
     } else {
         alert("Code incorrect.");
     }
+}
+
+// --- FONCTION DE FILTRAGE (RÉPARE L'ERREUR CONSOLE) ---
+function filtrerMatchs() {
+    const searchInput = document.getElementById('search-input');
+    if (!searchInput) return;
+    
+    const searchTerm = searchInput.value.toLowerCase();
+    
+    // Filtrer les données stockées
+    const filtered = allMatchesData.filter(match => {
+        const home = (match.homeTeam.shortName || match.homeTeam.name).toLowerCase();
+        const away = (match.awayTeam.shortName || match.awayTeam.name).toLowerCase();
+        return home.includes(searchTerm) || away.includes(searchTerm);
+    });
+
+    displayMatches(filtered);
 }
 
 // --- NOTIFICATION PAR GMAIL (DIRECT) ---
@@ -88,6 +106,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     typeWriter();
+
+    // Ajouter l'écouteur pour la recherche
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', filtrerMatchs);
+    }
 });
 
 // --- NAVIGATION ---
@@ -102,16 +126,12 @@ function showTab(tabId, element) {
     
     if (element) {
         element.classList.add('active');
-    } else {
-        const links = document.querySelectorAll('.tab-link');
-        if(tabId === 'stats-section') links[1].classList.add('active');
-        if(tabId === 'home-section') links[0].classList.add('active');
     }
 
     if(tabId === 'stats-section') fetchVraisMatchsReels();
 }
 
-// --- RÉCUPÉRATION DES MATCHS (VERSION ROBUSTE 60S) ---
+// --- RÉCUPÉRATION DES MATCHS (VERSION ROBUSTE 70S) ---
 async function fetchVraisMatchsReels() {
     const container = document.getElementById('all-matches-list');
     if(!container) return;
@@ -119,14 +139,13 @@ async function fetchVraisMatchsReels() {
     container.innerHTML = `
         <div class="loading-text">
             <div class="spinner"></div>
-            Synchronisation avec HIRAM...<br>
-            <small>(Le serveur Render se réveille, attendez 30-60s)</small>
+            Synchronisation HIRAM...<br>
+            <small>(Le serveur Render sort de veille, max 70s)</small>
         </div>`;
 
     try {
-        // Timeout de 60 secondes pour laisser le temps à Render de démarrer
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
+        const timeoutId = setTimeout(() => controller.abort(), 70000);
 
         const response = await fetch(`${SERVER_URL}/api/matches`, { signal: controller.signal });
         clearTimeout(timeoutId);
@@ -134,50 +153,57 @@ async function fetchVraisMatchsReels() {
         if (!response.ok) throw new Error("Réponse serveur incorrecte");
         
         const data = await response.json();
-        container.innerHTML = ''; // Nettoyage du loader
-
-        if (!data.matches || data.matches.length === 0) {
-            container.innerHTML = `<div class="loading-text">Aucun match disponible pour les 7 prochains jours.</div>`;
-            return;
+        
+        if (data.matches && data.matches.length > 0) {
+            allMatchesData = data.matches; // Stockage pour le filtrage
+            displayMatches(allMatchesData);
+        } else {
+            container.innerHTML = `<div class="loading-text">Aucun match disponible pour le moment.</div>`;
         }
-
-        container.innerHTML = `<div class="date-divider">Matchs de la semaine</div>`; 
-
-        data.matches.forEach(match => {
-            const dateObj = new Date(match.utcDate);
-            const dateMatch = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-            const heureMatch = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-            
-            const home = (match.homeTeam.shortName || match.homeTeam.name).replace(/'/g, " ");
-            const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
-
-            container.innerHTML += `
-                <div class="card mini-match-card animated-fade-in">
-                    <div class="mini-info-box">
-                        <span class="match-date-badge">${dateMatch}</span>
-                        <div class="teams-display">
-                            <span class="team-name">${home}</span>
-                            <span class="vs-text">VS</span>
-                            <span class="team-name">${away}</span>
-                        </div>
-                        <span class="league-tag">${heureMatch}</span>
-                    </div>
-                    <button class="action-btn" onclick="preRemplir('${home}', '${away}')">Analyser</button>
-                </div>`;
-        });
     } catch (error) {
         console.error("Erreur HIRAM:", error);
         container.innerHTML = `
             <div class="loading-text" style="color:#ff4d4d">
-                <i class="fas fa-exclamation-triangle"></i> Connexion lente.<br>
-                Le serveur finit de démarrer. Réessayez dans 10 secondes.<br>
-                <button onclick="fetchVraisMatchsReels()" class="action-btn" style="margin-top:15px; background:#00d4ff; color:#000; font-weight:bold;">
-                    ACTUALISER LE CALENDRIER
+                ⚠️ Connexion impossible. Le serveur est encore en veille.<br>
+                <button onclick="fetchVraisMatchsReels()" class="action-btn" style="margin-top:15px; background:#00d4ff; color:#000;">
+                    RÉESSAYER LA CONNEXION
                 </button>
             </div>`;
     }
 }
 
+// --- AFFICHAGE DES MATCHS ---
+function displayMatches(matches) {
+    const container = document.getElementById('all-matches-list');
+    if (!container) return;
+    
+    container.innerHTML = `<div class="date-divider">Matchs de la semaine</div>`; 
+
+    matches.forEach(match => {
+        const dateObj = new Date(match.utcDate);
+        const dateMatch = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        const heureMatch = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        
+        const home = (match.homeTeam.shortName || match.homeTeam.name).replace(/'/g, " ");
+        const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
+
+        container.innerHTML += `
+            <div class="card mini-match-card animated-fade-in">
+                <div class="mini-info-box">
+                    <span class="match-date-badge">${dateMatch}</span>
+                    <div class="teams-display">
+                        <span class="team-name">${home}</span>
+                        <span class="vs-text">VS</span>
+                        <span class="team-name">${away}</span>
+                    </div>
+                    <span class="league-tag">${heureMatch}</span>
+                </div>
+                <button class="action-btn" onclick="preRemplir('${home}', '${away}')">Analyser</button>
+            </div>`;
+    });
+}
+
+// --- ANALYSE IA & AUTRES ---
 async function lancerAnalyseIA() {
     const dom = document.getElementById('home-team').value;
     const ext = document.getElementById('away-team').value;
