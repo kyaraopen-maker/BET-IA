@@ -34,8 +34,8 @@ function filtrerMatchs() {
     
     const searchTerm = searchInput.value.toLowerCase();
     const filtered = allMatchesData.filter(match => {
-        const home = (match.homeTeam.shortName || match.homeTeam.name).toLowerCase();
-        const away = (match.awayTeam.shortName || match.awayTeam.name).toLowerCase();
+        const home = (match.homeTeam.name).toLowerCase();
+        const away = (match.awayTeam.name).toLowerCase();
         return home.includes(searchTerm) || away.includes(searchTerm);
     });
     displayMatches(filtered);
@@ -49,10 +49,12 @@ function showTab(tabId, element) {
     const targetTab = document.getElementById(tabId);
     if (targetTab) targetTab.classList.add('active');
     if (element) element.classList.add('active');
+    
+    // Si on va sur l'onglet des matchs, on lance la récupération
     if(tabId === 'stats-section') fetchVraisMatchsReels();
 }
 
-// --- RÉCUPÉRATION (VERSION PRÉSENTATION - 90S) ---
+// --- RÉCUPÉRATION RÉELLE (90S) ---
 async function fetchVraisMatchsReels() {
     const container = document.getElementById('all-matches-list');
     if(!container) return;
@@ -60,31 +62,36 @@ async function fetchVraisMatchsReels() {
     container.innerHTML = `
         <div class="loading-text">
             <div class="spinner"></div>
-            Synchronisation HIRAM...<br>
-            <small>Réveil du serveur (Soyez patient pour la démo...)</small>
+            Récupération des prochains matchs...<br>
+            <small>(Le serveur Render sort de veille...)</small>
         </div>`;
 
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 secondes pour être sûr
+        const timeoutId = setTimeout(() => controller.abort(), 90000); 
 
         const response = await fetch(`${SERVER_URL}/api/matches`, { signal: controller.signal });
         clearTimeout(timeoutId);
         
         const data = await response.json();
+        
+        // On vérifie si on a bien des matchs dans la réponse
         if (data.matches && data.matches.length > 0) {
             allMatchesData = data.matches;
             displayMatches(allMatchesData);
         } else {
-            container.innerHTML = `<div class="loading-text">Aucun match disponible pour le moment.</div>`;
+            container.innerHTML = `
+                <div class="loading-text">
+                    Aucun match trouvé pour les 7 prochains jours dans les ligues gratuites.<br>
+                    <button onclick="fetchVraisMatchsReels()" class="action-btn" style="margin-top:10px;">ACTUALISER</button>
+                </div>`;
         }
     } catch (error) {
         container.innerHTML = `
             <div class="loading-text" style="color:#ff4d4d">
                 ⚠️ Connexion en cours...<br>
-                Le serveur finit de démarrer. Cliquez en dessous :<br>
                 <button onclick="fetchVraisMatchsReels()" class="action-btn" style="margin-top:15px; background:#00d4ff; color:#000;">
-                    ACTUALISER LE CALENDRIER
+                    RÉESSAYER LE CHARGEMENT RÉEL
                 </button>
             </div>`;
     }
@@ -93,19 +100,27 @@ async function fetchVraisMatchsReels() {
 function displayMatches(matches) {
     const container = document.getElementById('all-matches-list');
     if (!container) return;
-    container.innerHTML = `<div class="date-divider">Matchs disponibles</div>`; 
+    container.innerHTML = `<div class="date-divider">Vrais prochains matchs</div>`; 
 
     matches.forEach(match => {
-        const home = (match.homeTeam.shortName || match.homeTeam.name).replace(/'/g, " ");
-        const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
+        // Formater l'heure
+        const matchDate = new Date(match.utcDate);
+        const heure = matchDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        const jour = matchDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+
+        const home = (match.homeTeam.name).replace(/'/g, " ");
+        const away = (match.awayTeam.name).replace(/'/g, " ");
+        
         container.innerHTML += `
             <div class="card mini-match-card animated-fade-in">
                 <div class="mini-info-box">
+                    <span class="match-date-badge">${jour} - ${heure}</span>
                     <div class="teams-display">
                         <span class="team-name">${home}</span>
                         <span class="vs-text">VS</span>
                         <span class="team-name">${away}</span>
                     </div>
+                    <small style="color:#00d4ff; font-size:10px;">${match.competition.name}</small>
                 </div>
                 <button class="action-btn" onclick="preRemplir('${home}', '${away}')">Analyser</button>
             </div>`;
@@ -132,7 +147,7 @@ async function lancerAnalyseIA() {
             afficherResultatFinal(dom, ext, resultContainer, dataIA);
         } else { throw new Error(); }
     } catch (e) {
-        resultContainer.innerHTML = `<div class="loading-text" style="color:#ff4d4d">❌ Erreur IA. Réessaie.</div>`;
+        resultContainer.innerHTML = `<div class="loading-text" style="color:#ff4d4d">❌ Erreur d'analyse. Réessaie.</div>`;
     }
 }
 
@@ -142,9 +157,9 @@ function afficherResultatFinal(dom, ext, container, dataIA) {
             <h2 style="font-size:42px; color:#fff; text-align:center;">${dataIA.score}</h2>
             <div style="display:flex; justify-content:space-between; color:#00d4ff; font-weight:bold;">
                  <span>Confiance : ${dataIA.confidence}%</span>
-                 <span>Buts : ${dataIA.avg_goals}</span>
+                 <span>P(V) : ${dataIA.win_probability}</span>
             </div>
-            <p style="color:#fff; font-size:13px; margin-top:15px; border-top:1px solid #333; pt:10px;">
+            <p style="color:#fff; font-size:13px; margin-top:15px; border-top:1px solid #333; padding-top:10px;">
                 ${dataIA.ai_analysis}
             </p>
         </div>`;
@@ -158,7 +173,9 @@ function preRemplir(dom, ext) {
 
 // --- INITIALISATION ---
 document.addEventListener('DOMContentLoaded', () => {
+    // Réveil immédiat du serveur
     fetch(`${SERVER_URL}/api/ping`).catch(() => {});
+    
     const search = document.getElementById('search-input');
     if (search) search.addEventListener('input', filtrerMatchs);
     

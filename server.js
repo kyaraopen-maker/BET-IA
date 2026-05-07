@@ -35,36 +35,42 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/ping', (req, res) => {
-    res.status(200).send("Réveillé");
+    res.status(200).send("HIRAM_ACTIVE");
 });
 
-// --- ROUTE : MATCHS DE LA SEMAINE ---
+// --- ROUTE : MATCHS DE LA SEMAINE (FIXED) ---
 app.get('/api/matches', async (req, res) => {
     try {
         const today = new Date();
         const nextWeek = new Date();
         nextWeek.setDate(today.getDate() + 7);
 
+        // On utilise le format YYYY-MM-DD exigé par l'API
         const dateFrom = today.toISOString().split('T')[0];
         const dateTo = nextWeek.toISOString().split('T')[0];
 
-        console.log(`📅 HIRAM cherche les matchs du ${dateFrom} au ${dateTo}`);
+        console.log(`📅 HIRAM cherche les matchs réels du ${dateFrom} au ${dateTo}`);
 
-        // Ajout de WC (Coupe du Monde) et EC (Euro) pour éviter les listes vides hors saison
         const response = await axios.get(`https://api.football-data.org/v4/matches`, {
             params: {
                 dateFrom: dateFrom,
                 dateTo: dateTo,
-                competitions: 'PL,FL1,CL,BL1,SA,PD,DED,PPL,WC,EC'
+                // On limite strictement aux ligues du plan GRATUIT pour éviter les erreurs 403
+                competitions: 'PL,FL1,BL1,SA,PD,CL' 
             },
             headers: { 'X-Auth-Token': API_KEY_FOOT }
         });
 
-        console.log(`✅ ${response.data.matches.length} matchs trouvés`);
+        // Sécurité : Si l'API renvoie une liste vide, on log l'info
+        if (!response.data.matches || response.data.matches.length === 0) {
+            console.log("⚠️ Aucun match trouvé dans les ligues gratuites aujourd'hui.");
+        }
+
         res.json(response.data);
     } catch (error) {
-        console.error("❌ Erreur API Football:", error.message);
-        res.status(500).json({ error: "Impossible de charger les matchs" });
+        // Si l'API Football bloque, on renvoie une structure vide propre au lieu de planter
+        console.error("❌ Erreur API Football:", error.response ? error.response.data : error.message);
+        res.status(500).json({ matches: [], error: "Service momentanément indisponible" });
     }
 });
 
@@ -89,39 +95,29 @@ app.post('/api/notif-paiement', (req, res) => {
 app.post('/api/analyse-expert', async (req, res) => {
     const { homeName, awayName } = req.body;
     try {
-        let contexteSportif = "Données H2H non disponibles.";
-        try {
-            const footData = await axios.get(`https://api.football-data.org/v4/matches`, {
-                headers: { 'X-Auth-Token': API_KEY_FOOT },
-                timeout: 4000
-            });
-            if (footData.data.matches) {
-                contexteSportif = footData.data.matches.slice(0, 15).map(m => 
-                    `${m.homeTeam.name} ${m.score.fullTime.home}-${m.score.fullTime.away} ${m.awayTeam.name}`
-                ).join(', ');
-            }
-        } catch (e) {}
-
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = `Analyse ce match de foot : ${homeName} vs ${awayName}. Contexte récent : ${contexteSportif}. 
-        Réponds UNIQUEMENT en JSON pur (sans markdown) avec ces clés : score, confidence, win_probability, draw_probability, home_form, away_form, avg_goals, key_players, ai_analysis.`;
+        
+        // On simplifie le prompt pour plus de rapidité pendant la démo
+        const prompt = `Analyse le match : ${homeName} vs ${awayName}. 
+        Donne un pronostic de score, une confiance en %, et une brève analyse tactique. 
+        Réponds UNIQUEMENT en JSON avec : score, confidence, win_probability, draw_probability, ai_analysis.`;
 
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
         
-        // Extraction du JSON pour éviter les erreurs si Gemini ajoute du texte
         const jsonMatch = responseText.match(/\{.*\}/s);
-        if (!jsonMatch) throw new Error("Réponse IA mal formattée");
+        if (!jsonMatch) throw new Error("Format IA invalide");
         
         const parsedData = JSON.parse(jsonMatch[0]);
         res.json({ ...parsedData, status: "SUCCESS" });
     } catch (error) {
         console.error("❌ Erreur Analyse:", error.message);
-        res.status(500).json({ error: "Erreur d'analyse" });
+        res.status(500).json({ error: "Analyse indisponible" });
     }
 });
 
-const PORT = process.env.PORT || 3000;
+// --- DÉMARRAGE (ADAPTÉ RENDER) ---
+const PORT = process.env.PORT || 10000; 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 SERVEUR HIRAM ACTIF sur le port ${PORT}`);
+    console.log(`🚀 SERVEUR HIRAM PRÊT SUR PORT ${PORT}`);
 });
