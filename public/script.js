@@ -2,7 +2,7 @@
 const SERVER_URL = 'https://bet-ia-2.onrender.com';
 let sessionValide = false; 
 
-// --- SYSTÈME D'ACCÈS ---
+// --- SYSTÈME DE VÉRIFICATION D'ACCÈS ---
 function verifierStatutPaiement() {
     const paymentScreen = document.getElementById('payment-screen');
     if (sessionValide) {
@@ -18,7 +18,7 @@ function validerAccesSession() {
     sessionValide = true;
     const paymentScreen = document.getElementById('payment-screen');
     if (paymentScreen) paymentScreen.style.display = 'none';
-    alert("Accès HIRAM activé !");
+    alert("Accès HIRAM activé pour cette session.");
 }
 
 function checkAdminCode() {
@@ -30,37 +30,64 @@ function checkAdminCode() {
     }
 }
 
-// --- NOTIFICATIONS ---
+// --- NOTIFICATION PAR GMAIL (DIRECT) ---
+function envoyerNotificationPaiement() {
+    const numero = document.getElementById('client-phone').value;
+    
+    if (numero.length < 9) {
+        alert("Veuillez entrer un numéro valide.");
+        return;
+    }
+
+    const destinataire = "hiramearchitecteweb@gmail.com";
+    const sujet = encodeURIComponent("💰 PAIEMENT CONGO BET IA - " + numero);
+    const corps = encodeURIComponent("Bonjour Enki,\n\nJe viens d'effectuer le dépôt de 50F pour le service BET IA.\nMon numéro de dépôt : " + numero + "\n\nMerci de me transmettre le code d'accès.");
+    
+    window.location.href = `mailto:${destinataire}?subject=${sujet}&body=${corps}`;
+
+    const formConf = document.getElementById('form-confirmation');
+    const waitMsg = document.getElementById('wait-message');
+    if(formConf) formConf.style.display = 'none';
+    if(waitMsg) waitMsg.style.display = 'block';
+
+    setTimeout(() => {
+        alert("Envoie le mail qui vient de s'ouvrir. Enki te donnera le code après vérification !");
+    }, 1000);
+}
+
 function copierNumero() {
     navigator.clipboard.writeText("068424624");
     alert("Numéro copié : 068424624");
 }
 
-function envoyerNotificationPaiement() {
-    const numero = document.getElementById('client-phone').value;
-    if (numero.length < 9) { alert("Numéro invalide."); return; }
-
-    const destinataire = "hiramearchitecteweb@gmail.com";
-    const sujet = encodeURIComponent("💰 PAIEMENT BET IA - " + numero);
-    const corps = encodeURIComponent("Bonjour Enki, j'ai fait le dépôt de 50F. Mon numéro : " + numero);
-    
-    window.location.href = `mailto:${destinataire}?subject=${sujet}&body=${corps}`;
-    alert("Envoie le mail et attends le code de validation !");
-}
-
-// --- CHARGEMENT INITIAL ---
+// --- ANIMATION LOADER & RÉVEIL SERVEUR ---
 document.addEventListener('DOMContentLoaded', () => {
+    const textElement = document.getElementById('typing-text');
     const loader = document.getElementById('loader-hiram');
-    
-    // Réveil forcé du serveur
-    fetch(`${SERVER_URL}/api/ping`).catch(() => {});
+    const phrase = "BET IA ";
+    let index = 0;
 
-    setTimeout(() => {
-        if(loader) {
-            loader.style.display = 'none';
-            verifierStatutPaiement();
+    // On réveille le serveur Render dès l'ouverture du site
+    fetch(`${SERVER_URL}/api/ping`).catch(e => console.log("Réveil serveur..."));
+
+    function typeWriter() {
+        if (textElement && index < phrase.length) {
+            textElement.innerHTML += phrase.charAt(index);
+            index++;
+            setTimeout(typeWriter, 70);
+        } else {
+            setTimeout(() => {
+                if(loader) {
+                    loader.style.opacity = '0';
+                    setTimeout(() => {
+                        loader.style.display = 'none';
+                        verifierStatutPaiement();
+                    }, 1000);
+                }
+            }, 1000);
         }
-    }, 2000);
+    }
+    typeWriter();
 });
 
 // --- NAVIGATION ---
@@ -70,27 +97,42 @@ function showTab(tabId, element) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-link').forEach(link => link.classList.remove('active'));
     
-    document.getElementById(tabId).classList.add('active');
-    if (element) element.classList.add('active');
+    const targetTab = document.getElementById(tabId);
+    if (targetTab) targetTab.classList.add('active');
+    
+    // Si l'élément est passé, on l'active, sinon on cherche par classe
+    if (element) {
+        element.classList.add('active');
+    } else {
+        const links = document.querySelectorAll('.tab-link');
+        if(tabId === 'stats-section') links[1].classList.add('active');
+        if(tabId === 'home-section') links[0].classList.add('active');
+    }
 
     if(tabId === 'stats-section') fetchVraisMatchsReels();
 }
 
-// --- RÉCUPÉRATION DES MATCHS (LA VERSION QUI NE FAILLE PAS) ---
+// --- RÉCUPÉRATION DES MATCHS (CORRIGÉE) ---
 async function fetchVraisMatchsReels() {
     const container = document.getElementById('all-matches-list');
     if(!container) return;
     
-    container.innerHTML = '<div class="loading-text">Connexion au cerveau HIRAM...</div>';
+    container.innerHTML = '<div class="loading-text">Chargement des matchs de la semaine...</div>';
 
     try {
-        const response = await fetch(`${SERVER_URL}/api/matches`);
+        // Ajout d'un timeout pour ne pas attendre 30 ans si Render est lent
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        const response = await fetch(`${SERVER_URL}/api/matches`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
         const data = await response.json();
         
         container.innerHTML = `<div class="date-divider">Matchs de la semaine</div>`; 
 
         if (!data.matches || data.matches.length === 0) {
-            container.innerHTML += `<div class="loading-text">Aucun match trouvé. Réessaie dans 1 min le temps que Render se réveille.</div>`;
+            container.innerHTML += `<div class="loading-text">Aucun match disponible pour les 7 prochains jours.</div>`;
             return;
         }
 
@@ -99,6 +141,7 @@ async function fetchVraisMatchsReels() {
             const dateMatch = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
             const heureMatch = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
             
+            // On nettoie les noms pour éviter de casser le JS
             const home = (match.homeTeam.shortName || match.homeTeam.name).replace(/'/g, " ");
             const away = (match.awayTeam.shortName || match.awayTeam.name).replace(/'/g, " ");
 
@@ -117,16 +160,21 @@ async function fetchVraisMatchsReels() {
                 </div>`;
         });
     } catch (error) {
-        container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Le serveur est en cours de réveil. Patiente 30s et reclique sur Calendrier.</div>`;
+        console.error("Erreur HIRAM:", error);
+        container.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Le serveur Render met du temps à répondre. Réessaie dans 10 secondes.</div>`;
     }
 }
 
-// --- ANALYSE IA ---
 async function lancerAnalyseIA() {
     const dom = document.getElementById('home-team').value;
     const ext = document.getElementById('away-team').value;
 
-    if (!dom || !ext) { alert("Choisis un match !"); return; }
+    if (!dom || !ext) {
+        alert("Choisis un match dans le calendrier d'abord !");
+        return;
+    }
+
+    if (!verifierStatutPaiement()) return;
     
     const resultContainer = document.getElementById('analysis-output'); 
     resultContainer.innerHTML = `<div class="loading-box"><div class="spinner"></div><p>Intelligence HIRAM en cours...</p></div>`;
@@ -139,27 +187,41 @@ async function lancerAnalyseIA() {
         });
         const dataIA = await response.json();
         
-        resultContainer.innerHTML = `
-            <div class="card analysis-card" style="margin-top:20px; border: 1px solid #00d4ff; background: rgba(0,0,0,0.9); padding:20px; border-radius:15px;">
-                <h2 style="font-size:45px; color:#fff; text-align:center;">${dataIA.score}</h2>
-                <p style="text-align:center; color:#00d4ff;">Confiance : ${dataIA.confidence}%</p>
-                <div style="display:flex; justify-content:space-around; margin:15px 0; color:#fff;">
-                    <span>V: ${dataIA.win_probability}</span>
-                    <span>N: ${dataIA.draw_probability}</span>
-                </div>
-                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; color:#eee; font-size:13px;">
-                    ${dataIA.ai_analysis}
-                </div>
-            </div>`;
+        if(dataIA.status === "SUCCESS") {
+            afficherResultatFinal(dom, ext, resultContainer, dataIA);
+        } else {
+            throw new Error("Erreur IA");
+        }
     } catch (error) {
-        resultContainer.innerHTML = `<div class="loading-text" style="color:#ff4d4d">Erreur d'analyse. Réessaie.</div>`;
+        resultContainer.innerHTML = `<div class="loading-text" style="color:#ff4d4d">❌ Erreur : Le cerveau IA est saturé. Réessaie.</div>`;
     }
+}
+
+function afficherResultatFinal(dom, ext, container, dataIA) {
+    container.innerHTML = `
+        <div class="card analysis-card animated-bounce-in" style="margin-top:20px; border: 1px solid #00d4ff; background: rgba(0,0,0,0.95); padding:20px; border-radius:15px;">
+            <h3 style="color:#00d4ff; font-size:12px;"><i class="fas fa-microchip"></i> HIRAM EXPERT ANALYTICS</h3>
+            <h2 style="font-size:52px; color:#fff; text-align:center;">${dataIA.score}</h2>
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                 <span style="color:#00d4ff;">Confiance : ${dataIA.confidence}%</span>
+                 <span style="color:#00d4ff;">Buts moy : ${dataIA.avg_goals}</span>
+            </div>
+            <div style="display:flex; justify-content:space-around; margin:15px 0; color:#fff; font-weight:bold; background:rgba(0,212,255,0.1); padding:10px; border-radius:5px;">
+                <span>V: ${dataIA.win_probability}</span>
+                <span>N: ${dataIA.draw_probability}</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:10px; color:#fff; font-size:13px; line-height:1.5;">
+                <i class="fas fa-quote-left" style="color:#00d4ff;"></i> ${dataIA.ai_analysis}
+            </div>
+        </div>
+    `;
 }
 
 function preRemplir(dom, ext) {
     document.getElementById('home-team').value = dom;
     document.getElementById('away-team').value = ext;
-    showTab('home-section', document.querySelectorAll('.tab-link')[0]);
+    // On bascule sur l'onglet Analyse (le premier)
+    showTab('home-section');
 }
 
 function toggleGuide() {
