@@ -12,9 +12,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- CONFIGURATION HIRAM ---
+// --- CONFIGURATION HIRAM (Priorité aux variables d'environnement) ---
 const MON_GMAIL = "kyaraopenL@gmail.com"; 
-// Rappel : Utilise un MOT DE PASSE D'APPLICATION (16 lettres) dans les variables Render
 const MON_PASS_APP = process.env.GMAIL_APP_PASS || "kyarabusness"; 
 const GEMINI_KEY = process.env.GEMINI_KEY || "AIzaSyBJaMLUh4BcfUns_Tr3N9oGleB49wv1Apg"; 
 const SPORTMONKS_TOKEN = "bWLHVupyKRR8yhXRH7CcBlAsRr4GKqqabATNCBg9oocGZvzedVpZSDo5Ejje";
@@ -35,51 +34,65 @@ app.get('/api/ping', (req, res) => {
     res.status(200).send("HIRAM_ACTIVE");
 });
 
-// --- ROUTE MATCHS ARRANGÉE ---
+// --- ROUTE MATCHS (CORRIGÉE POUR SPORTMONKS V3) ---
 app.get('/api/matches', async (req, res) => {
     try {
         const today = new Date().toISOString().split('T')[0];
-        const endRange = "2026-12-31"; 
-
+        
+        // Appel Sportmonks avec filtres corrigés
         const response = await axios.get(`https://api.sportmonks.com/v3/football/fixtures`, {
             params: {
                 api_token: SPORTMONKS_TOKEN,
                 include: 'participants;league',
-                filters: `fixtureDates:${today},${endRange}`,
-                per_page: 150 
+                // On récupère les matchs du jour pour éviter les erreurs de plage de dates
+                filters: `fixtureDates:${today}`, 
+                per_page: 50 
             },
-            timeout: 8000 // Évite que Render ne freeze si l'API est lente
+            timeout: 10000 
         });
 
         let matches = [];
 
         if (response.data && response.data.data) {
             matches = response.data.data.map(f => {
-                const home = f.participants.find(p => p.meta.location === 'home');
-                const away = f.participants.find(p => p.meta.location === 'away');
+                // Recherche sécurisée des équipes
+                const home = f.participants?.find(p => p.meta?.location === 'home');
+                const away = f.participants?.find(p => p.meta?.location === 'away');
+                
                 return {
                     homeTeam: { name: home ? home.name : "Équipe Locale" },
                     awayTeam: { name: away ? away.name : "Équipe Visiteuse" },
                     utcDate: f.starting_at,
-                    competition: { name: f.league ? f.league.name : "Football" }
+                    competition: { name: f.league ? f.league.name : "Ligue" }
                 };
             }).sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
         }
 
+        // Si aucun match trouvé aujourd'hui, on envoie un message clair
         if (matches.length === 0) {
-            matches = [{ homeTeam: { name: "Attente..." }, awayTeam: { name: "Nouveaux Matchs" }, utcDate: new Date().toISOString(), competition: { name: "Mise à jour" } }];
+            return res.json({ matches: [{ 
+                homeTeam: { name: "Aucun match" }, 
+                awayTeam: { name: "aujourd'hui" }, 
+                utcDate: new Date().toISOString(), 
+                competition: { name: "Info" } 
+            }] });
         }
 
         res.json({ matches });
 
     } catch (error) {
-        console.error("Erreur API Sportmonks:", error.message);
-        // Fallback pour que le site ne soit jamais vide
-        res.json({ matches: [{ homeTeam: { name: "Real Madrid" }, awayTeam: { name: "FC Barcelone" }, utcDate: new Date().toISOString(), competition: { name: "Liga (Demo)" } }] });
+        console.error("Erreur API Sportmonks:", error.response?.data || error.message);
+        // Fallback démo
+        res.json({ matches: [{ 
+            homeTeam: { name: "Vérifier" }, 
+            awayTeam: { name: "Connexion API" }, 
+            utcDate: new Date().toISOString(), 
+            competition: { name: "Erreur" } 
+        }] });
     }
 });
 
-// --- ANALYSE IA (VERSION ROBUSTE) ---
+// --- ANALYSE IA (VERSION GEMINI 1.5 FLASH) ---
 app.post('/api/analyse-expert', async (req, res) => {
     const { homeName, awayName } = req.body;
     
@@ -88,17 +101,23 @@ app.post('/api/analyse-expert', async (req, res) => {
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = `Analyse le match : ${homeName} vs ${awayName}. Donne un score probable et une analyse. Réponds UNIQUEMENT en JSON pur sans texte avant ou après : {"score": "X-X", "confidence": "X%", "win_probability": "X%", "draw_probability": "X%", "ai_analysis": "..."}`;
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-1.5-flash",
+            generationConfig: { temperature: 0.3 } // Plus stable pour le JSON
+        });
+
+        const prompt = `Analyse le match de football : ${homeName} vs ${awayName}. 
+        Donne un score probable et une analyse tactique courte. 
+        Réponds EXCLUSIVEMENT sous ce format JSON :
+        {"score": "X-X", "confidence": "X%", "win_probability": "X%", "draw_probability": "X%", "ai_analysis": "..."}`;
         
         const result = await model.generateContent(prompt);
         const text = result.response.text();
         
-        // Nettoyage ultra-robuste du JSON
-        const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
-        const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
+        // Extraction du JSON au cas où l'IA ajoute du texte autour
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
         
-        if (!jsonMatch) throw new Error("Format JSON non trouvé");
+        if (!jsonMatch) throw new Error("Format JSON non détecté");
         
         const finalData = JSON.parse(jsonMatch[0]);
         res.json({ ...finalData, status: "SUCCESS" });
@@ -107,10 +126,10 @@ app.post('/api/analyse-expert', async (req, res) => {
         console.error("❌ IA Error:", error.message);
         res.json({ 
             status: "SUCCESS", 
-            score: "2-1", 
-            confidence: "70%", 
-            win_probability: "50%", 
-            ai_analysis: "L'analyse est en cours de calcul. Fiez-vous aux statistiques récentes de l'équipe à domicile." 
+            score: "Analyse indisponible", 
+            confidence: "--", 
+            win_probability: "--", 
+            ai_analysis: "Le service d'analyse HIRAM est temporairement saturé. Veuillez réessayer dans quelques instants." 
         });
     }
 });
@@ -122,12 +141,15 @@ app.post('/api/notif-paiement', (req, res) => {
         from: `HIRAM ALERT <${MON_GMAIL}>`,
         to: MON_GMAIL,
         subject: `🚨 PAIEMENT DÉCLARÉ : ${numero_client}`,
-        text: `Salut Enki, paiement de 50F déclaré sur ${projet || 'Congo Bet IA'} par ${numero_client}.`
+        text: `Nouveau paiement déclaré.\nProjet : ${projet || 'Congo Bet IA'}\nClient : ${numero_client}\nDate : ${new Date().toLocaleString()}`
     };
 
     transporter.sendMail(mailOptions, (error) => {
-        if (error) console.error("Erreur Mail:", error.message);
-        res.json({ status: error ? "error" : "success" });
+        if (error) {
+            console.error("Erreur Mail:", error.message);
+            return res.status(500).json({ status: "error" });
+        }
+        res.json({ status: "success" });
     });
 });
 
